@@ -58,15 +58,51 @@ a.desc:after {
     margin: 0 0 15px 0;
 }
 
+.help-block {
+    color: #a94442;
+}
+
+.float-right {
+    float: right;
+}
+
+.float-left {
+    float: left;
+}
+
+.left-btn {
+    display: block;
+    float: left;
+    width: 48%;
+}
+
+.inner-btn {
+    width: 100%
+}
+
+.centr-text {
+    text-align: center;
+}
+
+.right-btn {
+    display: block;
+    float: right;
+    width: 48%;
+}
+
+.modal-win-center {
+
+}
+
 /* align the logout "link" (button in form) of the navbar */
 .nav li > form > button.logout {
     padding-top: 7px;
     color: rgba(255, 255, 255, 0.5);
 }
 
-@media(max-width:767px) {
+@media (max-width: 767px) {
     .nav li > form > button.logout {
-        display:block;
+        display: block;
         text-align: left;
         width: 100%;
         padding: 10px 0;

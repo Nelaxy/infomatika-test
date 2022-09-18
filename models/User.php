@@ -2,38 +2,66 @@
 
 namespace app\models;
 
-class User extends \yii\base\BaseObject implements \yii\web\IdentityInterface
+use Yii;
+use yii\db\ActiveRecord;
+use app\models\ActivationCode;
+
+/**
+ * This is the model class for table "user".
+ *
+ * @property int $id
+ * @property string $surname
+ * @property string $name
+ * @property string $email
+ * @property string $password
+ * @property string $auth_key
+ * @property string $access_token
+ * @property bool $is_activated
+ */
+class User extends ActiveRecord implements \yii\web\IdentityInterface
 {
-    public $id;
-    public $username;
-    public $password;
-    public $authKey;
-    public $accessToken;
 
-    private static $users = [
-        '100' => [
-            'id' => '100',
-            'username' => 'admin',
-            'password' => 'admin',
-            'authKey' => 'test100key',
-            'accessToken' => '100-token',
-        ],
-        '101' => [
-            'id' => '101',
-            'username' => 'demo',
-            'password' => 'demo',
-            'authKey' => 'test101key',
-            'accessToken' => '101-token',
-        ],
-    ];
+    /**
+     * {@inheritdoc}
+     */
+    public static function tableName()
+    {
+        return '{{%user}}';
+    }
 
+    /**
+     * {@inheritdoc}
+     */
+    public function rules()
+    {
+        return [
+            [['email', 'password'], 'required'],
+            ['email', 'filter', 'filter' => 'strtolower'],
+            ['email', 'email'],
+            ['email', 'unique'],
+            [['surname', 'name', 'password'], 'string', 'min' => 2, 'max' => 255],
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function attributeLabels()
+    {
+        return [
+            'surname' => 'Фамилия',
+            'name' => 'Имя',
+            'email' => 'Е-mail',
+            'password' => 'Пароль'
+        ];
+    }
 
     /**
      * {@inheritdoc}
      */
     public static function findIdentity($id)
     {
-        return isset(self::$users[$id]) ? new static(self::$users[$id]) : null;
+        return static::findOne($id);
     }
 
     /**
@@ -41,30 +69,26 @@ class User extends \yii\base\BaseObject implements \yii\web\IdentityInterface
      */
     public static function findIdentityByAccessToken($token, $type = null)
     {
-        foreach (self::$users as $user) {
-            if ($user['accessToken'] === $token) {
-                return new static($user);
-            }
-        }
-
-        return null;
+        return static::findOne(['access_token' => $token]);
     }
 
     /**
-     * Finds user by username
-     *
-     * @param string $username
-     * @return static|null
+     * Searches for User with recieved E-mail
+     * @return User
      */
-    public static function findByUsername($username)
+    public static function findByEmail($email)
     {
-        foreach (self::$users as $user) {
-            if (strcasecmp($user['username'], $username) === 0) {
-                return new static($user);
-            }
-        }
+        return static::findOne(['email' => $email]);
+    }
 
-        return null;
+    /**
+     * Generates password hash from password and sets it to the model
+     *
+     * @param string $password
+     */
+    public function setPassword($password)
+    {
+        $this->password = Yii::$app->security->generatePasswordHash($password);
     }
 
     /**
@@ -80,7 +104,7 @@ class User extends \yii\base\BaseObject implements \yii\web\IdentityInterface
      */
     public function getAuthKey()
     {
-        return $this->authKey;
+        return $this->auth_key;
     }
 
     /**
@@ -88,7 +112,7 @@ class User extends \yii\base\BaseObject implements \yii\web\IdentityInterface
      */
     public function validateAuthKey($authKey)
     {
-        return $this->authKey === $authKey;
+        return $this->auth_key === $authKey;
     }
 
     /**
@@ -99,6 +123,69 @@ class User extends \yii\base\BaseObject implements \yii\web\IdentityInterface
      */
     public function validatePassword($password)
     {
-        return $this->password === $password;
+        return Yii::$app->security->validatePassword($password, $this->password);
+    }
+
+    /**
+     * Returns Activation_code by user_id.
+     * @return \yii\db\ActiveQuery
+     */
+    public function getActivationCode()
+    {
+        return $this->hasOne(ActivationCode::class, ['user_id' => 'id']);
+    }
+
+    /**
+     * if User inserted
+     * then creates and sends
+     * activation_code for his profile
+     * if changed User is_activated attribute to true value
+     * then deletes users activation_code
+     * it also could be realized by using scenario but this way looks more universal
+     */
+    public function afterSave($insert, $changedAttributes)
+    {
+        if ($insert) {
+            $activation_code = new ActivationCode([
+                'user_id' => $this->id,
+                'code' => Yii::$app->security->generateRandomString(64)
+            ]);
+            if ($activation_code->save()) {
+                return Yii::$app->mailer->compose('layouts/activationEmail', ['activation_code' => $activation_code->code])
+                    ->setFrom([Yii::$app->params['senderEmail'] => Yii::$app->name . '(отправлено автоматически)'])
+                    ->setTo($this->email)
+                    ->setSubject('Активация профиля для ' . $this->surname . ' ' . $this->name)
+                    ->send();
+            }
+        } else if (array_key_exists('is_activated', $changedAttributes)) {
+            $activation_code = $this->activationCode;
+            if ($this->is_activated) {
+                $activation_code->delete();
+            }
+        }
+        parent::afterSave($insert, $changedAttributes);
+    }
+
+    /**
+     * User is related with his activation_code on database level,
+     * to avoid error we should delete activation_code before
+     * @return bool
+     */
+    public function beforeDelete()
+    {
+        $activation_code = $this->activationCode;
+        if ($activation_code) {
+            $activation_code->delete();
+        }
+        return parent::beforeDelete();
+    }
+
+    /**
+     * After deleting current profile user can't use it
+     */
+    public function afterDelete()
+    {
+        Yii::$app->user->logout();
+        parent::afterDelete(); // TODO: Change the autogenerated stub
     }
 }
