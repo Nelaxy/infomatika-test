@@ -160,14 +160,11 @@ class SiteController extends Controller
             return $this->render('activation-request');
         }
         if ($model->load(Yii::$app->request->post())) {
-            $transaction = Yii::$app->db->beginTransaction();
             try {
                 if (!$model->save()) {
                     throw new \Exception('Не сохранить изменения профиля!');
                 }
-                $transaction->commit();
             } catch (\Exception $e) {
-                $transaction->rollBack();
                 return $this->generateJson(null, 0, $e->getMessage());
             }
         }

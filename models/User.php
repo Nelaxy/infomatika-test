@@ -2,6 +2,7 @@
 
 namespace app\models;
 
+use app\services\MailService;
 use Yii;
 use yii\db\ActiveRecord;
 use app\models\ActivationCode;
@@ -151,11 +152,13 @@ class User extends ActiveRecord implements \yii\web\IdentityInterface
                 'code' => Yii::$app->security->generateRandomString(64)
             ]);
             if ($activation_code->save()) {
-                return Yii::$app->mailer->compose('layouts/activationEmail', ['activation_code' => $activation_code->code])
-                    ->setFrom([Yii::$app->params['senderEmail'] => Yii::$app->name . '(отправлено автоматически)'])
-                    ->setTo($this->email)
-                    ->setSubject('Активация профиля для ' . $this->surname . ' ' . $this->name)
-                    ->send();
+                $mailService = new MailService();
+                $mailService->sendActivationMessage(
+                    activation_code: $activation_code->code,
+                    email: $this->email,
+                    surname: $this->surname,
+                    name: $this->name
+                );
             }
         } else if (array_key_exists('is_activated', $changedAttributes)) {
             $activation_code = $this->activationCode;
